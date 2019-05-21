@@ -1,0 +1,153 @@
+<html>
+    <header>
+        <meta charset="utf-8" />
+        <title>mvvm双向绑定</title>
+    </header>
+    <body>
+
+        <div id="root">
+            <input type="text" v-model="word" />
+            <p v-bind="word"></p>
+            <button v-click="handleBtnClick">按钮</button>
+        </div>
+
+        <script type="text/javascript">
+        
+            function Vue(options) {
+                this.init(options);
+            }
+
+            Vue.prototype.init = function(options) {
+                this.$options = options;
+                this.$el = document.querySelector(options.el);      //绑定的元素
+                this.$data = options.data;
+                this.$methods = options.methods;
+
+                //订阅器对象
+                this.binding = {};
+                //数据监听器
+                this.observe(this.$data);
+                //模板解析器
+                this.compile(this.$el);
+            }
+
+            //劫持监听所有属性
+            Vue.prototype.observe = function(data) {
+                if(typeof data !== 'object') {
+                    return;
+                }
+                let _this = this;
+                Object.keys(data).forEach(function(key) {
+                    //添加订阅者
+                    _this.binding[key] = {
+                        _directives: []
+                    };
+                    let value = data[key];
+                    //递归子元素
+                    _this.observe(value);
+                    let binding = _this.binding[key];
+                    Object.defineProperty(data, key, {
+                        configurable: true,
+                        enumerable: true,
+                        get: function() {
+                            console.log(`获取${key}：${value}`);
+                            return value;
+                        },
+                        set: function(newValue) {
+                            console.log(`属性${key}发生变化：${value} ===> ${newValue}`);
+                            if(value === newValue) {
+                                return;
+                            }
+                            value = newValue;
+                            binding._directives.forEach(function(item) {
+                                item.update();
+                            });
+                        }
+                    });
+                });
+            }
+
+            //模板指令解析器
+            Vue.prototype.compile = function(root) {
+                let _this = this;
+                let nodes = root.children;
+                for(let i=0; i<nodes.length; i++) {
+                    let node = nodes[i];
+                    if(node.children) {
+                        _this.compile(node);
+                    }
+
+                    //解析v-click指令
+                    if(node.hasAttribute('v-click')) {
+                        node.onclick = (function() {
+                            let attrVal = node.getAttribute('v-click');
+
+                            return _this.$methods[attrVal].bind(_this.$data)
+                        })();
+                    }
+
+                    //解析v-bind指令
+                    if(node.hasAttribute('v-bind')) {
+                        let attrVal = node.getAttribute('v-bind');
+                        //绑定更新函数
+                        _this.binding[attrVal]._directives.push(new Watcher(
+                            'text',
+                            node,
+                            _this,
+                            attrVal,
+                            'innerHTML'
+                        ));
+                    }
+
+                    //解析v-model指令
+                    if(node.hasAttribute('v-model') && (node.tagName === 'INPUT' || node.tagName === 'TEXTAREA')) {
+                        node.addEventListener('input', (function(key) {
+                            let attrVal = node.getAttribute('v-model');
+                            //绑定更新函数
+                            _this.binding[attrVal]._directives.push(new Watcher(
+                                'input',
+                                node,
+                                _this,
+                                attrVal,
+                                'value'
+                            ));
+
+                            return function() {
+                                _this.$data[attrVal] = node.value;
+                            }
+                        })(i));
+                    }
+
+                }
+            }
+
+            //观察者
+            function Watcher(name, el, vm, exp, attr) {
+                this.name = name;   //名称
+                this.el = el;       //绑定的dom元素
+                this.vm = vm;       //vue实例
+                this.exp = exp;     //绑定的属性    如numer
+                this.attr = attr;   //元素属性  如innerHTML
+
+                this.update();
+            }
+            //添加更新函数
+            Watcher.prototype.update = function() {
+                this.el[this.attr] = this.vm.$data[this.exp];
+            }
+
+            const app = new Vue({
+                el: '#root',
+                data: {
+                    word: 'hello world'
+                },
+                methods: {
+                    handleBtnClick() {
+                        this.word = 'hello world'
+                    }
+                }
+            });
+
+        </script>
+    </body>
+</html>
